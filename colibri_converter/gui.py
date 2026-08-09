@@ -488,8 +488,11 @@ def _install_sigint(app: QApplication, window: "MainWindow") -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             signal.signal(sig, handler)
-        except (ValueError, OSError, AttributeError):
-            pass  # pas de gestionnaire possible hors du thread principal
+        except (ValueError, OSError, AttributeError) as exc:
+            # Pas de gestionnaire possible hors du thread principal (ValueError)
+            # ou sur certaines plateformes : Ctrl+C restera alors moins
+            # gracieux, mais l'application continue de fonctionner.
+            log.debug("Gestionnaire pour %s non installé : %s", sig, exc)
 
     # 200 ms : imperceptible en charge CPU, largement assez réactif.
     heartbeat = QTimer(app)
