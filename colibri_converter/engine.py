@@ -571,6 +571,23 @@ _PDF_FILTER_PDFA = (
 )
 
 
+def _pdf_is_tagged(path: Path) -> bool:
+    """
+    Un PDF balisé porte /MarkInfo (avec /Marked true) et un /StructTreeRoot.
+    Certaines versions de LibreOffice (7.3, celle qu'apt installe encore sur
+    Ubuntu 22.04) ignorent silencieusement les options d'export étendues
+    passées via `--convert-to` — le filtre demande un PDF balisé, LibreOffice
+    en produit un non balisé sans lever la moindre erreur. Sans cette
+    vérification, l'application affirmerait un succès complet alors que la
+    structure attendue est absente.
+    """
+    try:
+        head = path.read_bytes()
+    except OSError:
+        return False
+    return b"/StructTreeRoot" in head and b"/MarkInfo" in head
+
+
 def docx_to_pdf(
     source: Path,
     output: Optional[Path] = None,
@@ -632,6 +649,14 @@ def docx_to_pdf(
 
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(produced), str(output))
+
+    if not pdfa and not _pdf_is_tagged(output):
+        warnings.append(
+            "PDF produit sans balisage structurel : cette version de "
+            "LibreOffice ignore les options d'export étendues. Une "
+            "conversion ultérieure PDF -> Word sera moins fidèle. Mettre à "
+            "jour LibreOffice résout généralement ce point."
+        )
 
     return ConversionResult(
         source=source, output=output,
