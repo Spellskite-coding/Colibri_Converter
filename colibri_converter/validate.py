@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+
 import difflib
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger("colibri_converter.validate")
 
 # Seuils : en dessous, on alerte l'utilisateur au lieu de livrer en silence.
 TEXT_OK = 0.98
@@ -250,8 +254,10 @@ def audit(source: Path, output: Path, *, reference_pdf: Optional[Path] = None) -
             if Path(path).suffix.lower() == ".pdf":
                 with fitz.open(path) as d:
                     setattr(report, attr, d.page_count)
-    except Exception:
-        pass
+    except Exception as exc:
+        # Enrichissement facultatif du rapport : son échec n'invalide pas
+        # l'audit lui-même, qui repose sur les similarités déjà calculées.
+        log.debug("Comptage des pages ignoré : %s", exc)
 
     return report
 
