@@ -154,8 +154,11 @@ def _assert_trusted(binary: Path, *, origin: str) -> Path:
             raise UntrustedBackend(
                 f"Binaire trouvé dans le répertoire courant ({resolved}) : refusé."
             )
-    except OSError:
-        pass
+    except OSError as exc:
+        # Non bloquant : si le répertoire courant est illisible, on saute
+        # simplement cette comparaison plutôt que de faire échouer toute
+        # la résolution du binaire pour une vérification secondaire.
+        log.debug("Comparaison au répertoire courant ignorée : %s", exc)
 
     # Comparaison par COMPOSANT de chemin, pas par sous-chaîne : un
     # utilisateur nommé "Templeton" contient "temp" et serait bloqué à tort.
@@ -320,8 +323,11 @@ def _run_guarded(cmd: list[str], *, timeout: int, cwd: Path) -> tuple[int, str, 
         _kill_tree(proc)
         try:
             proc.communicate(timeout=10)
-        except Exception:
-            pass
+        except Exception as exc:
+            # Best-effort : le processus est déjà tué, ce drainage ne sert
+            # qu'à éviter un tube bloqué. Son échec ne doit rien changer
+            # à l'exception d'origine qui remonte juste après.
+            log.debug("Drainage des tubes après kill incomplet : %s", exc)
         raise
     finally:
         for stream in (proc.stdout, proc.stderr):
