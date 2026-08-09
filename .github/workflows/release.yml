@@ -100,12 +100,12 @@ jobs:
         run: |
           # Pas de lancement de la GUI ici : le runner n'a pas de serveur
           # d'affichage, le processus resterait bloqué et gèlerait le job.
-          test -f "dist/colibri-converter/colibri-converter" || test -f "dist/colibri-converter/colibri-converter.exe"
+          test -f "dist/colibri-converter" || test -f "dist/colibri-converter.exe"
           python -c "import colibri_converter.engine, colibri_converter.gui; print('imports OK')"
 
       - name: Empaqueter (zip)
         if: matrix.archive == 'zip'
-        run: Compress-Archive -Path dist/colibri-converter -DestinationPath ${{ matrix.artifact }}.zip
+        run: Compress-Archive -Path dist/colibri-converter.exe -DestinationPath ${{ matrix.artifact }}.zip
         shell: pwsh
 
       - name: Empaqueter (tar)
@@ -149,6 +149,9 @@ jobs:
             1. Installez [LibreOffice](https://www.libreoffice.org/download/) si ce n'est pas déjà fait
             2. Téléchargez l'archive correspondant à votre système, puis décompressez-la
             3. Double-cliquez sur `colibri-converter` — ou glissez directement vos fichiers sur l'icône
+
+            L'exécutable est **autonome** : un seul fichier, déplaçable où vous voulez.
+            Comptez 2 à 5 s au premier lancement, le temps de l'extraction interne.
 
             Le fichier converti apparaît **à côté de l'original**.
             Notice complète : [UTILISATION.md](UTILISATION.md)
