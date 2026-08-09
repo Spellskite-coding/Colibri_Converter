@@ -18,7 +18,6 @@ import time
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 log = logging.getLogger("colibri_converter.engine")
 
@@ -94,7 +93,7 @@ def _bundled_root() -> Path:
     return Path(__file__).resolve().parent.parent / "vendor"
 
 
-def _registry_soffice() -> Optional[Path]:
+def _registry_soffice() -> Path | None:
     """Sous Windows, la base de registre est la source la plus fiable."""
     if os.name != "nt":
         return None
@@ -109,7 +108,12 @@ def _registry_soffice() -> Optional[Path]:
          r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\soffice.exe", None, False),
     ]
     for hive, subkey, value, is_dir in probes:
-        for flag in (0, getattr(winreg, "KEY_WOW64_64KEY", 0), getattr(winreg, "KEY_WOW64_32KEY", 0)):
+        wow_flags = (
+            0,
+            getattr(winreg, "KEY_WOW64_64KEY", 0),
+            getattr(winreg, "KEY_WOW64_32KEY", 0),
+        )
+        for flag in wow_flags:
             try:
                 with winreg.OpenKey(hive, subkey, 0, winreg.KEY_READ | flag) as key:
                     raw, _ = winreg.QueryValueEx(key, value)
@@ -128,7 +132,8 @@ def _is_world_writable(path: Path) -> bool:
         return False
     try:
         for parent in [path, *path.parents]:
-            if parent.exists() and (parent.stat().st_mode & 0o002) and not (parent.stat().st_mode & 0o1000):
+            mode = parent.stat().st_mode if parent.exists() else 0
+            if parent.exists() and (mode & 0o002) and not (mode & 0o1000):
                 return True
     except OSError:
         return True
@@ -254,8 +259,12 @@ def _kill_tree(proc: subprocess.Popen) -> None:
         return
     try:
         if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            taskkill = os.path.join(
+                os.environ.get("SystemRoot", r"C:\\Windows"),
+                "System32", "taskkill.exe",
+            )
+            subprocess.run(  # noqa: S603
+                [taskkill, "/F", "/T", "/PID", str(proc.pid)],
                 capture_output=True, timeout=15, check=False,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
@@ -318,7 +327,7 @@ def _run_guarded(cmd: list[str], *, timeout: int, cwd: Path) -> tuple[int, str, 
         raise ConversionError(
             f"Conversion interrompue après {timeout}s. "
             "Document trop lourd, ou fichier malformé."
-        )
+        ) from None
     except BaseException:
         _kill_tree(proc)
         try:
@@ -359,7 +368,7 @@ def _check_input(source: Path) -> Path:
     return source
 
 
-def safe_output_path(source: Path, target_ext: str, outdir: Optional[Path] = None) -> Path:
+def safe_output_path(source: Path, target_ext: str, outdir: Path | None = None) -> Path:
     """
     Chemin de sortie à côté du fichier source (ou dans outdir), sans jamais
     écraser un fichier existant. On n'utilise PAS le répertoire courant :
@@ -411,7 +420,11 @@ def _strip_external_rels(archive: zipfile.ZipFile, item, name: str) -> tuple[byt
     LibreOffice ouvre ces cibles en direct, sans passer par un proxy, donc
     l'assainissement de l'environnement ne suffit pas.
     """
-    import xml.etree.ElementTree as ET
+    # defusedxml bloque l'expansion d'entités au niveau du parseur, là où
+    # xml.etree reste vulnérable. C'est la défense structurelle ; le
+    # pré-filtre DTD/entité plus bas la double en profondeur.
+    from defusedxml.ElementTree import fromstring as _defused_fromstring
+    from xml.etree.ElementTree import ParseError, tostring
 
     # Un .rels légitime pèse quelques kilo-octets. Au-delà, on refuse de
     # parser : ElementTree reste sensible à l'expansion d'entités.
@@ -437,8 +450,8 @@ def _strip_external_rels(archive: zipfile.ZipFile, item, name: str) -> tuple[byt
         )
 
     try:
-        root = ET.fromstring(raw)
-    except ET.ParseError:
+        root = _defused_fromstring(raw)
+    except ParseError:
         return raw, [f"Relations illisibles, conservées telles quelles : {name}"]
 
     stripped: list[str] = []
@@ -457,7 +470,7 @@ def _strip_external_rels(archive: zipfile.ZipFile, item, name: str) -> tuple[byt
 
     if not stripped:
         return raw, []
-    return ET.tostring(root, encoding="UTF-8", xml_declaration=True), stripped
+    return tostring(root, encoding="UTF-8", xml_declaration=True), stripped
 
 
 def _copy_bounded(reader, writer, remaining: int, name: str) -> int:
@@ -596,7 +609,7 @@ def _pdf_is_tagged(path: Path) -> bool:
 
 def docx_to_pdf(
     source: Path,
-    output: Optional[Path] = None,
+    output: Path | None = None,
     *,
     pdfa: bool = False,
     timeout: int = 180,
@@ -689,14 +702,18 @@ def _apply_worker_limits() -> None:
     try:
         import resource
         soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-        target = WORKER_MEMORY_LIMIT if hard == resource.RLIM_INFINITY else min(WORKER_MEMORY_LIMIT, hard)
+        target = (
+            WORKER_MEMORY_LIMIT
+            if hard == resource.RLIM_INFINITY
+            else min(WORKER_MEMORY_LIMIT, hard)
+        )
         resource.setrlimit(resource.RLIMIT_AS, (target, hard))
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))  # pas de core dump : fuite de données
     except (ImportError, ValueError, OSError) as exc:
         log.debug("Limites de ressources non appliquées : %s", exc)
 
 
-def _pdf2docx_worker(src: str, dst: str, pages: Optional[tuple[int, int]]) -> None:
+def _pdf2docx_worker(src: str, dst: str, pages: tuple[int, int] | None) -> None:
     """
     Processus fils dédié. Le parsing PDF est la principale surface d'attaque
     du programme (PyMuPDF est du C++). Un crash ici ne touche pas l'application,
@@ -754,7 +771,7 @@ def _pdf2docx_isolated(src: Path, dst: Path, pages, timeout: int) -> None:
             log.debug("Nettoyage du worker incomplet : %s", exc)
 
 
-def _text_density(pdf: Path) -> Optional[int]:
+def _text_density(pdf: Path) -> int | None:
     """Caractères extractibles par page. 0 => PDF image-only (scan)."""
     try:
         import fitz  # PyMuPDF
@@ -793,11 +810,11 @@ def _ocrmypdf() -> Path:
 
 def pdf_to_docx(
     source: Path,
-    output: Optional[Path] = None,
+    output: Path | None = None,
     *,
     ocr: str = "auto",
     ocr_lang: str = "fra+eng",
-    pages: Optional[tuple[int, int]] = None,
+    pages: tuple[int, int] | None = None,
     timeout: int = 600,
 ) -> ConversionResult:
     """Reconstruit un .docx à partir d'un PDF (heuristique de mise en page)."""
@@ -860,7 +877,7 @@ def pdf_to_docx(
 SUPPORTED_INPUT = {".docx", ".doc", ".odt", ".rtf", ".pdf"}
 
 
-def convert(source: Path, output: Optional[Path] = None, **kwargs) -> ConversionResult:
+def convert(source: Path, output: Path | None = None, **kwargs) -> ConversionResult:
     """Aiguillage sur l'extension source."""
     ext = Path(source).suffix.lower()
     if ext == ".pdf":
