@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "colibri-converter"
+version = "0.1.0"
+description = "Conversion DOCX <-> PDF, 100% hors-ligne"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+classifiers = [
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business",
+]
+dependencies = [
+    "pdf2docx==0.5.8",
+    "PyMuPDF==1.24.14",
+    "python-docx==1.1.2",
+    "PySide6>=6.7,<7",
+]
+
+[project.optional-dependencies]
+audit = ["numpy>=1.26", "scikit-image>=0.24"]
+ocr = ["ocrmypdf>=16.0"]
+dev = ["pytest>=8", "ruff>=0.6", "bandit>=1.7", "pyinstaller>=6.10", "pillow>=10"]
+
+[project.scripts]
+colibri-converter = "colibri_converter.cli:main"
+
+[project.gui-scripts]
+colibri-converter-gui = "colibri_converter.gui:run"
+
+[tool.setuptools]
+packages = ["colibri_converter"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "S", "UP", "C4"]
+ignore = ["S404", "S603"]   # subprocess : usage volontaire et encadré
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]        # assert : c'est le principe d'un test
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["needs_soffice: nécessite LibreOffice installé"]

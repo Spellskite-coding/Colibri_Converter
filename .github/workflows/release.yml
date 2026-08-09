@@ -1,0 +1,159 @@
+name: Build & Release
+
+# Publication : git tag v0.1.0 && git push --tags
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # LibreOffice est indispensable : c'est le seul moyen d'exercer
+      # réellement les branches spécifiques à chaque OS (registre Windows,
+      # taskkill, encodage du profil en file://).
+      - name: LibreOffice (Windows)
+        if: runner.os == 'Windows'
+        run: choco install libreoffice-fresh --no-progress -y
+      - name: LibreOffice (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice-writer fonts-crosextra-carlito
+
+      - name: Dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+
+      - name: Tests
+        run: python -m pytest tests/ -v --tb=short
+        timeout-minutes: 20
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: colibri-converter-windows-x64
+            archive: zip
+          # Ubuntu 22.04 volontairement : PyInstaller lie la glibc de la machine
+          # de build. Compiler sur une version récente casse les distributions
+          # plus anciennes. On builde toujours sur la plus vieille supportée.
+          - os: ubuntu-22.04
+            artifact: colibri-converter-linux-x64
+            archive: tar
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Dépendances système (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libxkbcommon-x11-0 libdbus-1-3
+
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.11.1
+
+      - name: Contrôles statiques
+        run: |
+          pip install ruff bandit
+          ruff check colibri-converter app.py
+          bandit -r colibri-converter -ll
+
+      - name: Générer les icônes
+        run: |
+          pip install pillow
+          python tools/make_icons.py
+
+      - name: Build
+        run: pyinstaller --noconfirm --clean colibri-converter.spec
+
+      - name: Vérifier l'artefact
+        shell: bash
+        run: |
+          # Pas de lancement de la GUI ici : le runner n'a pas de serveur
+          # d'affichage, le processus resterait bloqué et gèlerait le job.
+          test -f "dist/colibri-converter/colibri-converter" || test -f "dist/colibri-converter/colibri-converter.exe"
+          python -c "import colibri_converter.engine, colibri_converter.gui; print('imports OK')"
+
+      - name: Empaqueter (zip)
+        if: matrix.archive == 'zip'
+        run: Compress-Archive -Path dist/colibri-converter -DestinationPath ${{ matrix.artifact }}.zip
+        shell: pwsh
+
+      - name: Empaqueter (tar)
+        if: matrix.archive == 'tar'
+        run: tar -czf ${{ matrix.artifact }}.tar.gz -C dist colibri-converter
+
+      - name: Empreintes SHA-256
+        shell: bash
+        run: |
+          for f in ${{ matrix.artifact }}.*; do
+            sha256sum "$f" > "$f.sha256" 2>/dev/null || shasum -a 256 "$f" > "$f.sha256"
+          done
+          cat ${{ matrix.artifact }}.*.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            **Prérequis : [LibreOffice](https://www.libreoffice.org/download/)**
+            L'application le détecte automatiquement et vous guide s'il est absent.
+
+            1. Installez [LibreOffice](https://www.libreoffice.org/download/) si ce n'est pas déjà fait
+            2. Téléchargez l'archive correspondant à votre système, puis décompressez-la
+            3. Double-cliquez sur `colibri-converter` — ou glissez directement vos fichiers sur l'icône
+
+            Le fichier converti apparaît **à côté de l'original**.
+            Notice complète : [UTILISATION.md](UTILISATION.md)
+
+            Le binaire n'est **pas signé** : Windows SmartScreen affichera un
+            avertissement. Vérifiez l'empreinte SHA-256 fournie avant exécution.
+
+            Conversion 100 % locale, aucune connexion réseau.
