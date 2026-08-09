@@ -4,6 +4,7 @@
 pdf2docx==0.5.8
 PyMuPDF==1.24.14        # AGPL-3.0 — voir la note de licence du README
 python-docx==1.1.2
+defusedxml==0.7.1  # parsing XML durci (anti-billion-laughs)
 PySide6==6.8.1
 
 # Optionnel : audit de fidélité (--audit)
