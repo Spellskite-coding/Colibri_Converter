@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import html
 import logging
+import os
+import signal
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QObject, QSize, QThread, QUrl, Qt, Signal
+from PySide6.QtCore import (
+    QByteArray, QObject, QSize, QThread, QTimer, QUrl, Qt, Signal,
+)
 from PySide6.QtGui import QDesktopServices, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
@@ -447,4 +451,48 @@ def run(argv: list[str] | None = None) -> int:
 
     window = MainWindow(initial)
     window.show()
+    _install_sigint(app, window)
     return app.exec()
+
+
+def _install_sigint(app: QApplication, window: "MainWindow") -> None:
+    """
+    Rend Ctrl+C utilisable depuis un terminal.
+
+    Sans ceci, `app.exec()` reste dans la boucle C++ de Qt : l'interpréteur
+    Python ne reprend jamais la main, le gestionnaire de signal n'est donc
+    jamais exécuté, et le processus est abattu au milieu de la destruction
+    des objets Qt — d'où le « segmentation fault ».
+
+    Deux pièces sont nécessaires :
+      - un QTimer inactif qui rend périodiquement la main à l'interpréteur,
+        seul moyen pour Python de traiter le signal reçu ;
+      - un gestionnaire qui demande une fermeture propre, puis force la
+        sortie si un second Ctrl+C arrive.
+    """
+    state = {"asked": False}
+
+    def handler(signum, frame):
+        if state["asked"]:
+            # Deuxième Ctrl+C : l'utilisateur insiste, on sort sans passer
+            # par la destruction Qt (c'est elle qui plantait).
+            log.warning("Interruption forcée.")
+            os._exit(130)
+        state["asked"] = True
+        print("\nFermeture en cours… (Ctrl+C à nouveau pour forcer)",
+              file=sys.stderr)
+        window.close()
+        if window.isHidden() or not window.isVisible():
+            app.quit()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, handler)
+        except (ValueError, OSError, AttributeError):
+            pass  # pas de gestionnaire possible hors du thread principal
+
+    # 200 ms : imperceptible en charge CPU, largement assez réactif.
+    heartbeat = QTimer(app)
+    heartbeat.start(200)
+    heartbeat.timeout.connect(lambda: None)
+    app._sigint_timer = heartbeat  # empêche la collecte du timer
