@@ -37,8 +37,13 @@ def _setup_logging() -> Path:
         handlers.append(RotatingFileHandler(
             path, maxBytes=1024 * 1024, backupCount=2, encoding="utf-8"
         ))
-    except OSError:
-        pass
+    except OSError as exc:
+        # La configuration du journal échoue ici même : impossible d'y
+        # journaliser cette erreur puisqu'aucun handler n'existe encore.
+        # stderr est le seul canal garanti disponible à ce stade.
+        if sys.stderr is not None:
+            print(f"Journalisation sur fichier indisponible : {exc}",
+                  file=sys.stderr)
     if sys.stderr is not None:
         handlers.append(logging.StreamHandler(sys.stderr))
 
@@ -67,8 +72,12 @@ def _install_excepthook(log_path: Path) -> None:
                     None, "colibri-converter — erreur inattendue",
                     f"{exc_type.__name__} : {exc_value}\n\nDétails : {log_path}",
                 )
-        except Exception:
-            pass
+        except Exception as gui_exc:
+            # Dernier recours : si meme l'affichage de l'erreur echoue (ex.
+            # Qt indisponible), on se contente de journaliser. Remonter une
+            # seconde exception ici ferait boucler l'application sur son
+            # propre crash.
+            logging.debug("Échec de l'alerte graphique : %s", gui_exc)
 
     sys.excepthook = hook
 
