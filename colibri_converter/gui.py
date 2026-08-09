@@ -455,7 +455,7 @@ def run(argv: list[str] | None = None) -> int:
     return app.exec()
 
 
-def _install_sigint(app: QApplication, window: "MainWindow") -> None:
+def _install_sigint(app: QApplication, window: MainWindow) -> None:
     """
     Rend Ctrl+C utilisable depuis un terminal.
 
