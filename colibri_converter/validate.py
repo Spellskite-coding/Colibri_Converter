@@ -9,7 +9,6 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 log = logging.getLogger("colibri_converter.validate")
 
@@ -22,10 +21,10 @@ VISUAL_WARN = 0.88
 
 @dataclass
 class FidelityReport:
-    text_similarity: Optional[float] = None
-    visual_similarity: Optional[float] = None
-    page_count_source: Optional[int] = None
-    page_count_output: Optional[int] = None
+    text_similarity: float | None = None
+    visual_similarity: float | None = None
+    page_count_source: int | None = None
+    page_count_output: int | None = None
     issues: list[str] = field(default_factory=list)
 
     @property
@@ -82,8 +81,6 @@ def extract_text(path: Path) -> str:
         with fitz.open(path) as doc:
             return _normalize("\n".join(p.get_text("text") for p in doc))
     if ext == ".docx":
-        import docx  # python-docx
-
         # python-docx décompresse sans plafond : on réutilise les garde-fous
         # du moteur plutôt que d'ouvrir l'archive brute.
         import tempfile
@@ -195,7 +192,8 @@ def visual_similarity(pdf_a: Path, pdf_b: Path, dpi: int = 100) -> tuple[float, 
             if ssim is not None:
                 score = float(ssim(ia, ib, data_range=255))
             else:
-                score = 1.0 - float(np.abs(ia.astype(np.int16) - ib.astype(np.int16)).mean()) / 255.0
+                diff = np.abs(ia.astype(np.int16) - ib.astype(np.int16)).mean()
+                score = 1.0 - float(diff) / 255.0
 
             scores.append(score)
             if score < VISUAL_WARN:
@@ -222,7 +220,7 @@ def _render_gray(page, matrix, np):
 # --------------------------------------------------------------------------
 
 
-def audit(source: Path, output: Path, *, reference_pdf: Optional[Path] = None) -> FidelityReport:
+def audit(source: Path, output: Path, *, reference_pdf: Path | None = None) -> FidelityReport:
     """
     Compare la sortie à sa source. Si reference_pdf est fourni (aller-retour),
     on ajoute la comparaison visuelle.
