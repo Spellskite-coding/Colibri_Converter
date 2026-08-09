@@ -148,7 +148,7 @@ Détail complet, limites assumées et procédure de signalement : **[SECURITY.md
 ```bash
 git clone https://github.com/<vous>/Colibri_Converter.git
 cd Colibri_Converter
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 pytest -v                    # suite complète
