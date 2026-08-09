@@ -381,10 +381,18 @@ def safe_output_path(source: Path, target_ext: str, outdir: Optional[Path] = Non
 # Types de relation dont une cible externe déclenche une connexion sortante
 # ou un chargement de contenu actif au rendu. Les hyperliens sont conservés :
 # ils ne sont suivis que sur clic, et les retirer dégraderait le document.
+# Toujours neutralisés : une cible externe de ce type déclenche un
+# chargement de contenu actif ou une exécution au rendu.
 _RISKY_REL_TYPES = (
     "attachedTemplate", "oleObject", "package", "subDocument",
-    "frame", "externalLink", "image", "audio", "video", "hyperlink/ole",
+    "frame", "externalLink",
 )
+
+# Médias liés : neutralisés UNIQUEMENT si la cible est distante. Une image
+# liée vers un fichier du disque est légitime et fréquente ; la supprimer
+# faisait disparaître les illustrations du document converti.
+_MEDIA_REL_TYPES = ("image", "audio", "video", "media")
+_REMOTE_SCHEMES = ("http://", "https://", "ftp://", "ftps://", "//")
 
 _RISKY_PARTS = ("word/vbaProject.bin", "word/vbaData.xml")
 _RISKY_PREFIXES = ("word/embeddings/", "word/activeX/", "customUI/")
@@ -432,10 +440,14 @@ def _strip_external_rels(archive: zipfile.ZipFile, item, name: str) -> tuple[byt
         if child.get("TargetMode") != "External":
             continue
         rel_type = (child.get("Type") or "").rsplit("/", 1)[-1]
-        if rel_type in _RISKY_REL_TYPES:
-            target = (child.get("Target") or "")[:80]
+        target = child.get("Target") or ""
+
+        remote = target.lower().startswith(_REMOTE_SCHEMES)
+        if rel_type in _RISKY_REL_TYPES or (rel_type in _MEDIA_REL_TYPES and remote):
             root.remove(child)
-            stripped.append(f"Référence externe neutralisée ({rel_type}) : {target}")
+            stripped.append(
+                f"Référence externe neutralisée ({rel_type}) : {target[:80]}"
+            )
 
     if not stripped:
         return raw, []
