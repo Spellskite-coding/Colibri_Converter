@@ -20,7 +20,7 @@ Colibri Converter fait la même chose, **entièrement en local**. Vous glissez u
 
 - 🔒 **100 % hors-ligne** — le document ne quitte jamais la machine
 - 🖱️ **Glisser-déposer** — aucune ligne de commande à connaître
-- 🪶 **Léger** — pas de moteur embarqué à télécharger deux fois, LibreOffice est réutilisé
+- 📦 **Un seul fichier** — l'exécutable est autonome, aucune installation
 - 🖥️ **Windows & Linux** — macOS via la ligne de commande
 - 📖 **Open source** — le code est intégralement lisible, rien de caché
 
@@ -28,17 +28,80 @@ Colibri Converter fait la même chose, **entièrement en local**. Vous glissez u
 
 ## Installation
 
-**1. Installez [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/)** (une fois, gratuit) — c'est le moteur de rendu utilisé en arrière-plan.
+Dans tous les cas, une seule dépendance externe est nécessaire : **[LibreOffice](https://www.libreoffice.org/download/download-libreoffice/)**, gratuit, qui fournit le moteur de conversion utilisé en arrière-plan. Colibri Converter ne l'embarque pas — il le détecte sur votre poste — pour rester patché par les mises à jour normales de The Document Foundation plutôt que de figer un moteur qu'il faudrait republier à chaque faille corrigée.
 
-**2. Téléchargez Colibri Converter** depuis la page [Releases](../../releases), décompressez l'archive.
+### 🪟 Windows
 
-**3. Lancez `colibri-converter`**, ou glissez directement un fichier sur son icône.
+1. **Installez LibreOffice** : téléchargez-le sur [libreoffice.org](https://www.libreoffice.org/download/download-libreoffice/) et suivez l'installeur — options par défaut, rien à personnaliser.
 
-C'est tout. Le fichier converti apparaît à côté de l'original.
+2. **Téléchargez Colibri Converter** depuis la page [Releases](../../releases) : prenez `colibri-converter-windows-x64.zip`.
 
-> Premier lancement sous Windows : SmartScreen affiche un avertissement, normal pour un exécutable non signé — *Informations complémentaires* → *Exécuter quand même*. Vérifiez l'empreinte SHA-256 publiée à côté de chaque archive avant d'exécuter.
->
-> 📄 Notice détaillée, pas à pas, pour utilisateur non technique : **[UTILISATION.md](UTILISATION.md)**
+3. **Décompressez l'archive** — clic droit → *Extraire tout*. Vous obtenez un seul fichier, `colibri-converter.exe`. Placez-le où vous voulez : Bureau, `Documents`, une clé USB — il est autonome et ne dépend d'aucun dossier voisin.
+
+4. **Premier lancement** : double-cliquez sur `colibri-converter.exe`.
+
+   > Windows affiche **SmartScreen** (« Windows a protégé votre ordinateur ») : normal pour un exécutable non signé par un certificat payant. Cliquez sur *Informations complémentaires*, puis *Exécuter quand même*.
+   >
+   > Avant cette étape, vérifiez l'intégrité du fichier téléchargé. Dans PowerShell, à l'endroit où se trouve l'archive :
+   > ```powershell
+   > Get-FileHash colibri-converter-windows-x64.zip
+   > ```
+   > Le résultat doit correspondre exactement au fichier `.sha256` publié à côté de l'archive sur la page Releases.
+
+5. Le démarrage prend 2 à 5 secondes la première fois — l'exécutable s'extrait dans un dossier temporaire (`%TEMP%`) avant de se lancer. C'est normal, et plus rapide aux lancements suivants.
+
+**Glisser-déposer** : une fois l'exe placé où vous le souhaitez, glissez directement un `.docx` ou un `.pdf` dessus pour lancer la conversion sans même ouvrir la fenêtre.
+
+> **Antivirus.** Un exécutable « fichier unique » comme celui-ci ressemble, dans sa structure, à ce que font certains malwares (auto-extraction puis lancement) — c'est une heuristique commune à Defender et aux antivirus tiers, pas une détection de contenu réel. Si le vôtre le signale, vous pouvez vérifier l'empreinte SHA-256 ci-dessus, consulter le code source (public) ou soumettre le fichier à [VirusTotal](https://www.virustotal.com/).
+
+### 🐧 Linux
+
+1. **Installez LibreOffice**, généralement déjà présent sur la plupart des distributions. Sinon :
+   ```bash
+   sudo apt install libreoffice-writer      # Debian / Ubuntu
+   sudo dnf install libreoffice-writer      # Fedora
+   ```
+
+2. **Téléchargez** `colibri-converter-linux-x64.tar.gz` depuis la page [Releases](../../releases), puis décompressez :
+   ```bash
+   tar -xzf colibri-converter-linux-x64.tar.gz
+   ```
+   Vous obtenez un seul exécutable, `colibri-converter`.
+
+3. **Rendez-le exécutable** — c'est l'étape que Windows fait automatiquement mais que Linux exige explicitement, par sécurité :
+   ```bash
+   chmod +x colibri-converter
+   ```
+
+4. **Lancez-le** :
+   ```bash
+   ./colibri-converter
+   ```
+   ou double-cliquez dessus depuis votre gestionnaire de fichiers (Nautilus, Dolphin…) si l'exécution graphique est activée.
+
+   Vérification d'intégrité avant tout, si vous le souhaitez :
+   ```bash
+   sha256sum colibri-converter-linux-x64.tar.gz
+   ```
+   à comparer au fichier `.sha256` publié à côté de l'archive.
+
+**Rendre l'exécutable accessible depuis n'importe où**, si vous voulez le lancer sans y penser :
+```bash
+mv colibri-converter ~/.local/bin/          # doit être dans votre PATH
+```
+puis lancez `colibri-converter` depuis n'importe quel terminal.
+
+### 🍎 macOS
+
+Non distribué en binaire : Gatekeeper bloque tout exécutable non notarisé, et le contournement se durcit à chaque version macOS — publier un `.app` non notarisé serait plus frustrant qu'utile. Passez par la ligne de commande :
+```bash
+brew install --cask libreoffice
+git clone https://github.com/<vous>/Colibri_Converter.git
+cd Colibri_Converter
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+colibri-converter mon_fichier.docx
+```
 
 ---
 
@@ -63,7 +126,7 @@ C'est tout. Le fichier converti apparaît à côté de l'original.
 └──────────────────────────────────────────────┘
 ```
 
-**Pourquoi LibreOffice ?** C'est le seul moteur libre, hors-ligne et multiplateforme qui interprète correctement le format OOXML — les alternatives Python pures perdent la mise en page, et `docx2pdf` pilote Microsoft Word par COM/AppleScript, donc indisponible sous Linux et non déterministe. LibreOffice n'est pas embarqué dans le binaire : il est détecté sur le poste. Ça évite de figer un moteur de plusieurs millions de lignes de C++ qu'il faudrait republier à chaque faille corrigée — vous restez patché par les mises à jour normales de The Document Foundation.
+**Pourquoi LibreOffice ?** C'est le seul moteur libre, hors-ligne et multiplateforme qui interprète correctement le format OOXML — les alternatives Python pures perdent la mise en page, et `docx2pdf` pilote Microsoft Word par COM/AppleScript, donc indisponible sous Linux et non déterministe.
 
 ---
 
@@ -135,7 +198,7 @@ Un convertisseur reçoit par définition des fichiers d'origine inconnue. Colibr
 
 - macros VBA, ActiveX et objets OLE retirés avant tout rendu
 - protection contre les zip-bombs et le zip-slip (le DOCX est une archive ZIP)
-- neutralisation des relations pointant vers une cible externe (modèles distants, rappels réseau)
+- neutralisation des relations pointant vers une cible externe distante (modèles distants, rappels réseau) — les médias liés localement sont conservés
 - résolution du binaire LibreOffice durcie contre le détournement de chemin
 - parsing PDF confiné dans un processus isolé, avec limite mémoire et timeout
 
@@ -148,7 +211,7 @@ Détail complet, limites assumées et procédure de signalement : **[SECURITY.md
 ```bash
 git clone https://github.com/<vous>/Colibri_Converter.git
 cd Colibri_Converter
-python3 -m venv .venv && source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 pytest -v                    # suite complète
@@ -160,6 +223,12 @@ Compiler l'exécutable :
 ```bash
 python tools/make_icons.py
 pyinstaller --noconfirm --clean colibri-converter.spec
+```
+
+Par défaut, le build produit un **exécutable unique** (`ONEFILE=1`, la valeur par défaut). Pour revenir à un dossier classique — démarrage instantané, mais non déplaçable hors de son dossier :
+
+```bash
+ONEFILE=0 pyinstaller --noconfirm --clean colibri-converter.spec
 ```
 
 Architecture, choix techniques et pièges de packaging déjà résolus : voir les commentaires de `colibri_converter/engine.py` et la CI (`.github/workflows/release.yml`), qui build et teste sur Windows et Linux avant chaque publication.
