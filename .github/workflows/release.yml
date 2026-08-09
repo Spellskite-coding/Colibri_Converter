@@ -84,8 +84,8 @@ jobs:
       - name: Contrôles statiques
         run: |
           pip install ruff bandit
-          ruff check colibri-converter app.py
-          bandit -r colibri-converter -ll
+          ruff check colibri_converter app.py
+          bandit -r colibri_converter -ll
 
       - name: Générer les icônes
         run: |
