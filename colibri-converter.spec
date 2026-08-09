@@ -47,7 +47,7 @@ a = Analysis(
         "colibri_converter.validate", "colibri_converter.cli",
         "colibri_converter.branding",
         "PySide6.QtSvg",         # rendu du logo : non détecté automatiquement
-        "pdf2docx", "fitz", "docx",
+        "pdf2docx", "fitz", "docx", "defusedxml.ElementTree",
         "multiprocessing.spawn",  # le worker PDF utilise le mode spawn
     ],
     hookspath=[],
