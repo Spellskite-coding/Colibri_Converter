@@ -369,3 +369,46 @@ def test_branding_svg_valides():
     ET.fromstring(COLIBRI_SVG)
     ET.fromstring(colibri_icon_svg())
     assert len(COLIBRI_SVG) < 8000  # doit rester léger pour l'icône 16 px
+
+
+def test_image_liee_locale_conservee(tmp_path):
+    """Régression : les images liées vers le disque étaient supprimées."""
+    base = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    rels = (
+        '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats'
+        '.org/package/2006/relationships">'
+        f'<Relationship Id="r1" TargetMode="External" Type="{base}/image"'
+        ' Target="file:///home/user/photo.png"/>'
+        f'<Relationship Id="r2" TargetMode="External" Type="{base}/image"'
+        ' Target="http://pisteur.example/pixel.png"/>'
+        "</Relationships>"
+    ).encode()
+    src = _minimal_docx(tmp_path / "img.docx", {"word/_rels/document.xml.rels": rels})
+    out = tmp_path / "clean.docx"
+    sanitize_docx(src, out)
+    with zipfile.ZipFile(out) as z:
+        cleaned = z.read("word/_rels/document.xml.rels").decode()
+    assert "photo.png" in cleaned, "une image liée locale ne doit pas disparaître"
+    assert "pisteur.example" not in cleaned, "un pixel distant reste un rappel réseau"
+
+
+@needs_soffice
+def test_image_embarquee_survit_a_la_conversion(tmp_path):
+    """Une image dans le DOCX doit se retrouver dans le PDF."""
+    import io
+
+    docx_mod = pytest.importorskip("docx")
+    pil = pytest.importorskip("PIL.Image")
+
+    buf = io.BytesIO()
+    pil.new("RGB", (80, 80), (200, 50, 50)).save(buf, "PNG")
+    buf.seek(0)
+
+    d = docx_mod.Document()
+    d.add_paragraph("Avant")
+    d.add_picture(buf, width=docx_mod.shared.Inches(1))
+    src = tmp_path / "avec_image.docx"
+    d.save(src)
+
+    raw = docx_to_pdf(src).output.read_bytes()
+    assert b"/Image" in raw and b"/Width" in raw, "l'image a disparu du PDF"
