@@ -9,8 +9,13 @@ PySide6==6.8.1
 reportlab==5.0.1   # moteur de rendu DOCX -> PDF, 100% Python (BSD)
 pillow>=10         # décodage des images du DOCX + rendu dans le PDF
 
-# Optionnel : audit de fidélité (--audit)
-numpy>=1.26
+# numpy est REQUIS : dépendance transitive de pdf2docx (PDF -> DOCX). Épinglé
+# à la dernière 1.26.x, la série la mieux éprouvée avec PyInstaller ; numpy 2.x
+# réorganise ses modules internes (numpy._core) d'une façon que le gel
+# PyInstaller ne collecte pas correctement sans configuration supplémentaire.
+numpy==1.26.4
+
+# Optionnel : audit de fidélité (--audit). numpy est déjà requis ci-dessus.
 scikit-image>=0.24
 
 # Optionnel : OCR des PDF scannés (requiert le binaire tesseract)

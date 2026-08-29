@@ -247,6 +247,54 @@ def test_conversion_reelle_et_avertissement_de_balisage(tmp_path):
     )
 
 
+def test_docx_sans_partie_numbering(tmp_path):
+    """
+    Régression : un .docx dépourvu de toute partie de numérotation (aucune
+    liste) ne doit PAS faire échouer la conversion. python-docx, sur un accès
+    à document.part.numbering_part quand la partie est absente, tente de la
+    créer via NumberingPart.new() — ce qui lève NotImplementedError (python-docx
+    1.1.2) et tuait le worker de rendu avec un « code 1 » opaque. Le parseur
+    doit résoudre la relation directement et traiter son absence comme « pas de
+    numérotation », sans jamais déclencher de création.
+
+    On part d'un .docx valide produit par python-docx (dont le gabarit inclut
+    toujours une partie numbering) et on la RETIRE — relation et Content-Type
+    compris — pour reproduire fidèlement un document sans numérotation.
+    """
+    docx = pytest.importorskip("docx")
+    import re
+
+    base = tmp_path / "avec_defaut.docx"
+    d = docx.Document()
+    d.add_heading("Titre sans liste", level=1)
+    d.add_paragraph("Un paragraphe ordinaire, aucune puce, aucune numérotation.")
+    d.save(base)
+
+    stripped = tmp_path / "sans_numbering.docx"
+    with zipfile.ZipFile(base) as zin, zipfile.ZipFile(stripped, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.namelist():
+            data = zin.read(item)
+            if "numbering" in item:
+                continue  # on retire word/numbering.xml
+            if item == "word/_rels/document.xml.rels":
+                data = re.sub(rb"<Relationship[^>]*numbering[^>]*/>", b"", data)
+            if item == "[Content_Types].xml":
+                data = re.sub(rb"<Override[^>]*numbering[^>]*/>", b"", data)
+            zout.writestr(item, data)
+
+    # Garde-fou : on vérifie qu'on a bien produit un docx SANS numbering,
+    # sinon le test ne prouverait rien.
+    with zipfile.ZipFile(stripped) as z:
+        assert not any("numbering" in n for n in z.namelist()), (
+            "le .docx de test contient encore une partie numbering : "
+            "le cas testé n'est pas reproduit"
+        )
+
+    result = docx_to_pdf(stripped)
+    assert result.output.is_file()
+    assert result.output.stat().st_size > 500
+
+
 def test_accents_dans_le_chemin(tmp_path):
     docx = pytest.importorskip("docx")
     folder = tmp_path / "Dossier Éric & Cie"

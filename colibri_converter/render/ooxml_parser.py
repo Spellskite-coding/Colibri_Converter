@@ -26,6 +26,7 @@ from docx.oxml.ns import qn
 from docx.table import Table as DocxTable, _Cell as DocxCell
 from docx.text.paragraph import Paragraph as DocxParagraph
 from docx.text.run import Run as DocxRun
+from docx.opc.constants import RELATIONSHIP_TYPE as _RT
 
 from .model import (
     Block,
@@ -582,8 +583,16 @@ class _NumberingResolver:
         self._counters: dict[tuple[str, int], int] = {}
         self.had_unresolvable = False
 
-        numbering_part = getattr(document.part, "numbering_part", None)
-        if numbering_part is None:
+        # On NE PASSE PAS par document.part.numbering_part : cette property de
+        # python-docx, si le document n'a aucune partie de numérotation (cas
+        # d'un .docx sans la moindre liste), tente d'en *créer* une via
+        # NumberingPart.new() — qui lève NotImplementedError sur python-docx
+        # 1.1.2 (et pollue le document sur les versions plus récentes). On
+        # résout donc la relation directement et on traite son absence comme
+        # « pas de numérotation », sans jamais déclencher de création.
+        try:
+            numbering_part = document.part.part_related_by(_RT.NUMBERING)
+        except KeyError:
             return
         root = numbering_part.element
 

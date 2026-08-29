@@ -16,7 +16,19 @@ import glob
 import os
 import sys
 
+from PyInstaller.utils.hooks import collect_all
+
 block_cipher = None
+
+# numpy est une dépendance TRANSITIVE de pdf2docx (PDF -> DOCX), pas un extra
+# optionnel : sans lui, toute conversion PDF -> DOCX échoue. Avec numpy 2.x,
+# la détection statique de PyInstaller rate les sous-modules chargés
+# dynamiquement (numpy._core._exceptions, numpy._core._multiarray_umath, ...),
+# d'où un ModuleNotFoundError au premier import dans le worker isolé. On
+# collecte donc TOUT numpy (modules Python + extensions C + données) de force.
+# Idem pour pdf2docx lui-même, qui charge certains sous-modules dynamiquement.
+_np_datas, _np_binaries, _np_hidden = collect_all("numpy")
+_p2d_datas, _p2d_binaries, _p2d_hidden = collect_all("pdf2docx")
 
 # Résolu explicitement en Python plutôt que via un motif glob confié à
 # PyInstaller : ça garantit que chaque police manquante ferait échouer le
@@ -62,8 +74,9 @@ EXCLUDES = [
 a = Analysis(
     ["app.py"],
     pathex=[],
-    binaries=[],
-    datas=FONT_DATAS,
+    binaries=_np_binaries + _p2d_binaries,
+    datas=FONT_DATAS + _np_datas + _p2d_datas,
+    # binaries : extensions C de numpy/pdf2docx, indispensables au runtime figé
     hiddenimports=[
         "colibri_converter.engine", "colibri_converter.gui",
         "colibri_converter.validate", "colibri_converter.cli",
@@ -77,7 +90,7 @@ a = Analysis(
         "reportlab.pdfbase.pdfmetrics", "reportlab.pdfbase.ttfonts",
         "reportlab.platypus", "PIL", "PIL.Image",
         "multiprocessing.spawn",  # les workers isolés utilisent le mode spawn
-    ],
+    ] + _np_hidden + _p2d_hidden,
     hookspath=[],
     runtime_hooks=[],
     excludes=EXCLUDES,
