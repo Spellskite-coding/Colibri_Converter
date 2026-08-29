@@ -128,5 +128,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()  # obligatoire pour les builds PyInstaller
+    # Voir le commentaire équivalent dans app.py : le wrapper haut niveau
+    # multiprocessing.freeze_support() est un no-op hors Windows, on appelle
+    # donc la version bas niveau qui fonctionne sur toutes les plateformes.
+    import multiprocessing.spawn
+    multiprocessing.spawn.freeze_support()  # obligatoire pour les builds PyInstaller
     sys.exit(main())
