@@ -87,7 +87,7 @@ then launch `colibri-converter` from any terminal.
 
 Not distributed as a binary: Gatekeeper blocks any non-notarized executable, and the workaround gets harder with every macOS version — shipping a non-notarized `.app` would be more frustrating than useful. Go through the command line instead:
 ```bash
-git clone https://github.com/<you>/Colibri_Converter.git
+git clone https://github.com/Spellskite-coding/Colibri_Converter.git
 cd Colibri_Converter
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
@@ -206,7 +206,7 @@ Full details, acknowledged limitations and reporting procedure: **[SECURITY.md](
 ## Development
 
 ```bash
-git clone https://github.com/<you>/Colibri_Converter.git
+git clone https://github.com/Spellskite-coding/Colibri_Converter.git
 cd Colibri_Converter
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
