@@ -108,5 +108,15 @@ if __name__ == "__main__":
     # OBLIGATOIRE avant toute autre initialisation : sans cet appel, un binaire
     # PyInstaller relance l'application entière à chaque `spawn` d'un worker,
     # ce qui produit une bombe à fork sous Windows.
-    multiprocessing.freeze_support()
+    #
+    # multiprocessing.freeze_support() (le wrapper de haut niveau) ne fait
+    # RIEN en dehors de Windows -- il contient un `if sys.platform == "win32"`
+    # en dur dans la stdlib. On appelle donc directement la version bas
+    # niveau (multiprocessing.spawn.freeze_support), qui n'a pas cette
+    # restriction : elle détecte l'invocation `--multiprocessing-fork` et
+    # court-circuite avant `main()`, sur toutes les plateformes. PyInstaller
+    # a normalement son propre hook runtime pour ce cas ; cet appel est une
+    # deuxième ligne de défense qui ne coûte rien si le hook suffit déjà.
+    import multiprocessing.spawn
+    multiprocessing.spawn.freeze_support()
     sys.exit(main())
