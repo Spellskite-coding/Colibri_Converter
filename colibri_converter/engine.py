@@ -737,7 +737,8 @@ def _pdf_significant_images(pdf_path: Path) -> list[bytes]:
             try:
                 if doc.xref_get_key(xref, "Subtype")[1] != "/Image":
                     continue
-            except Exception:
+            except Exception as exc:
+                log.debug("xref %s : type non lisible, ignoré : %s", xref, exc)
                 continue
             try:
                 info = doc.extract_image(xref)
