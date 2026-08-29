@@ -670,33 +670,92 @@ def _pdf_significant_images(pdf_path: Path) -> list[bytes]:
     PyMuPDF et laisse parfois de côté des images (espaces colorimétriques,
     contenu vectoriel/clippé, groupes) : on repart directement de la source
     plutôt que de faire confiance à ce qu'il a choisi de garder.
+
+    Deux passes, dans cet ordre :
+
+    1. Par page (page.get_images) : donne accès à la géométrie de rendu, donc
+       à l'aire réellement occupée — ce qui permet d'écarter les images
+       décoratives (puces, filets) sous le seuil.
+
+    2. Sur tout le document (doc.xref_length) : rattrape les images qui ne
+       sont référencées par AUCUNE page. Un JPEG orphelin (présent comme
+       objet mais absent des /Resources de chaque page — cas produit par
+       certains générateurs de PDF) est invisible à la passe par page, donc
+       à pdf2docx aussi ; sans cette seconde passe il serait perdu en
+       silence. Faute de géométrie de page pour ces xrefs, on ne peut pas
+       filtrer par aire : on retombe sur les dimensions en pixels pour
+       écarter le vraiment minuscule.
+
+    `seen_xrefs` est partagé entre les deux passes (et entre les pages) :
+    une même image présente sur plusieurs pages, ou vue en passe 1 puis
+    revue en passe 2, n'est extraite qu'une fois.
     """
     import fitz  # PyMuPDF
 
     images: list[bytes] = []
+    seen_xrefs: set[int] = set()
+
+    def _extract(doc, xref: int) -> None:
+        if xref in seen_xrefs:
+            return
+        seen_xrefs.add(xref)
+        try:
+            info = doc.extract_image(xref)
+        except Exception as exc:
+            log.debug("Image xref %s non extractible : %s", xref, exc)
+            return
+        data = info.get("image") if info else None
+        if data:
+            images.append(data)
+
+    # Seuil en pixels pour la passe 2 (pas de géométrie de page disponible).
+    # ~20x20 px : équivalent grossier du seuil en points de la passe 1, pour
+    # écarter un pixel de suivi ou une icône décorative orpheline.
+    min_px_side = 20
+
     with fitz.open(pdf_path) as doc:
+        # Passe 1 : par page, avec filtrage par aire de rendu.
         for page in doc:
-            seen_xrefs: set[int] = set()
             for img in page.get_images(full=True):
                 xref = img[0]
                 if xref in seen_xrefs:
                     continue
-                seen_xrefs.add(xref)
                 try:
                     rects = page.get_image_rects(xref)
                     area = max((r.width * r.height for r in rects), default=0)
                 except Exception:
                     area = 0
                 if area and area < _MIN_RECOVERABLE_IMAGE_AREA_PT2:
+                    seen_xrefs.add(xref)  # vue et écartée : ne pas la reprendre en passe 2
                     continue
-                try:
-                    info = doc.extract_image(xref)
-                except Exception as exc:
-                    log.debug("Image xref %s non extractible : %s", xref, exc)
+                _extract(doc, xref)
+
+        # Passe 2 : tout le document, pour les images non rattachées à une page.
+        for xref in range(1, doc.xref_length()):
+            if xref in seen_xrefs:
+                continue
+            try:
+                if doc.xref_get_key(xref, "Subtype")[1] != "/Image":
                     continue
-                data = info.get("image") if info else None
-                if data:
-                    images.append(data)
+            except Exception:
+                continue
+            try:
+                info = doc.extract_image(xref)
+            except Exception as exc:
+                log.debug("Image orpheline xref %s non extractible : %s", xref, exc)
+                seen_xrefs.add(xref)
+                continue
+            data = info.get("image") if info else None
+            if not data:
+                seen_xrefs.add(xref)
+                continue
+            w, h = info.get("width", 0), info.get("height", 0)
+            if w and h and (w < min_px_side or h < min_px_side):
+                seen_xrefs.add(xref)
+                continue
+            seen_xrefs.add(xref)
+            images.append(data)
+
     return images
 
 
