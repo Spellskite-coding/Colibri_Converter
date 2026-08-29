@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import multiprocessing as mp
 import os
+import traceback
 from pathlib import Path
 from collections.abc import Callable
 
@@ -67,6 +68,28 @@ class WorkerFailed(RuntimeError):
         super().__init__(f"{kind}: {detail}" if detail else kind)
 
 
+def _isolated_entrypoint(target: Callable[..., None], args: tuple, error_path: str) -> None:
+    """
+    Exécuté DANS le processus enfant. Capture toute exception levée par
+    `target` et écrit sa trace complète dans `error_path` avant de la
+    laisser remonter, pour que le processus meure quand même avec un code
+    de sortie non nul (le contrat existant de run_isolated ne change pas).
+
+    Sans ce filet, une exception dans le worker isolé était invisible pour
+    le parent : celui-ci ne voyait qu'un exitcode != 0 (le "code 1" générique
+    affiché à l'utilisateur), sans aucun moyen de savoir ce qui avait
+    réellement échoué à l'intérieur du processus isolé.
+    """
+    try:
+        target(*args)
+    except BaseException:
+        try:
+            Path(error_path).write_text(traceback.format_exc(), encoding="utf-8")
+        except OSError as write_exc:
+            log.debug("Impossible d'écrire la trace d'erreur du worker : %s", write_exc)
+        raise
+
+
 def run_isolated(
     target: Callable[..., None],
     args: tuple,
@@ -84,9 +107,19 @@ def run_isolated(
     Si `output_path` est fourni, son existence et sa non-vacuité après coup
     font partie du contrat de succès — un code de retour 0 sans fichier de
     sortie exploitable est traité comme un échec, pas comme une réussite.
+
+    En cas de crash, la trace Python complète de l'exception d'origine est
+    journalisée (niveau ERROR) avant que WorkerFailed ne soit levée — le
+    message utilisateur reste inchangé (générique, sans trace technique),
+    mais colibri-converter.log contient désormais la cause réelle.
     """
     ctx = mp.get_context("spawn")  # spawn : pas d'héritage d'état du parent
-    proc = ctx.Process(target=target, args=args, daemon=True)
+    error_path = (output_path if output_path is not None else Path("colibri-worker")).with_suffix(
+        ".worker-error.txt"
+    )
+    proc = ctx.Process(
+        target=_isolated_entrypoint, args=(target, args, str(error_path)), daemon=True
+    )
     proc.start()
     try:
         proc.join(timeout)
@@ -98,6 +131,16 @@ def run_isolated(
                 proc.join(5)
             raise WorkerFailed("timeout")
         if proc.exitcode != 0:
+            if error_path.is_file():
+                try:
+                    tb_text = error_path.read_text(encoding="utf-8").strip()
+                    if tb_text:
+                        log.error(
+                            "Worker isolé terminé en erreur (exitcode=%s) :\n%s",
+                            proc.exitcode, tb_text,
+                        )
+                except OSError as exc:
+                    log.debug("Trace d'erreur du worker illisible : %s", exc)
             raise WorkerFailed("crash", str(proc.exitcode))
         if output_path is not None and (
             not output_path.is_file() or output_path.stat().st_size == 0
@@ -106,6 +149,10 @@ def run_isolated(
     finally:
         # Ce bloc ne doit jamais lever : il masquerait l'exception d'origine
         # et l'appelant verrait une erreur sans rapport avec la panne réelle.
+        try:
+            error_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         try:
             if proc.is_alive():
                 proc.kill()
