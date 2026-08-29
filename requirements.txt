@@ -1,0 +1,17 @@
+# Versions épinglées : un build reproductible est la base de l'auditabilité.
+# Générer un SBOM avant publication :  cyclonedx-py requirements -o sbom.json
+
+pdf2docx==0.5.8
+PyMuPDF==1.24.14        # AGPL-3.0 — voir la note de licence du README
+python-docx==1.1.2
+defusedxml==0.7.1  # parsing XML durci (anti-billion-laughs)
+PySide6==6.8.1
+reportlab==5.0.1   # moteur de rendu DOCX -> PDF, 100% Python (BSD)
+pillow>=10         # décodage des images du DOCX + rendu dans le PDF
+
+# Optionnel : audit de fidélité (--audit)
+numpy>=1.26
+scikit-image>=0.24
+
+# Optionnel : OCR des PDF scannés (requiert le binaire tesseract)
+# ocrmypdf>=16.0

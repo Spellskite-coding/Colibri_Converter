@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+# vendor/ reste ignoré en général, sauf vendor/fonts/ : les polices de
+# substitution y sont indispensables au moteur de rendu et au build
+# PyInstaller (colibri-converter.spec) — voir vendor/fonts/NOTICE.md.
+vendor/*
+!vendor/fonts/
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+*.spec.bak
+# LICENSE est généré via curl (voir LICENSE.md) et non versionné tel quel :
+# décommentez la ligne suivante si vous préférez le versionner.
+# LICENSE
